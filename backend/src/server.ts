@@ -10,13 +10,13 @@ import prisma from './db';
 import { redisConnectionOptions, default as redis } from './redis';
 import { emailQueue, emailWorker, enqueueEmailJob, cancelEmailJob } from './queue';
 import { initElasticsearch, searchEmailsInIndex, indexEmail, deleteEmailFromIndex } from './elasticsearch';
-import { 
-  authMiddleware, 
-  verifyGoogleToken, 
-  generateToken, 
-  getGoogleAuthUrl, 
-  handleGoogleCallback, 
-  AuthenticatedRequest 
+import {
+  authMiddleware,
+  verifyGoogleToken,
+  generateToken,
+  getGoogleAuthUrl,
+  handleGoogleCallback,
+  AuthenticatedRequest
 } from './auth';
 import { getSlackAuthUrl, handleSlackCallback, sendSlackAlert } from './slack';
 
@@ -57,6 +57,11 @@ app.use('/admin/queues', (req, res, next) => {
   }
 });
 
+// Health check endpoints for monitoring and wake-up
+app.get(['/health', '/api/health'], (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 /**
  * Startup Reconciliation Task (Scenario C Recovery)
  * Syncs any pending/queued jobs in the DB that are missing from Redis back into the queue
@@ -71,7 +76,7 @@ async function reconcileOnBoot() {
     });
 
     console.log(`🔍 Found ${pendingEmails.length} emails in DB with pending/queued/rate_limited status.`);
-    
+
     let reQueuedCount = 0;
     for (const email of pendingEmails) {
       try {
@@ -755,7 +760,7 @@ app.post('/api/slack/test', authMiddleware, async (req: AuthenticatedRequest, re
 app.listen(PORT, async () => {
   console.log(`🚀 Express server running on http://localhost:${PORT}`);
   console.log(`📊 Bull Board Queue dashboard mounted at http://localhost:${PORT}/admin/queues`);
-  
+
   // 1. Initialize Elasticsearch indexes
   await initElasticsearch();
 
