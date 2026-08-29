@@ -479,6 +479,77 @@ app.get('/api/emails/search', authMiddleware, async (req: AuthenticatedRequest, 
 });
 
 /**
+ * Get Email Status Counts for Sidebar Widgets
+ */
+app.get('/api/emails/counts', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const scheduled = await prisma.emailJob.count({
+      where: {
+        userId: req.user!.id,
+        status: { in: ['pending', 'queued', 'sending', 'rate_limited'] },
+      },
+    });
+
+    const sent = await prisma.emailJob.count({
+      where: {
+        userId: req.user!.id,
+        status: 'sent',
+      },
+    });
+
+    const failed = await prisma.emailJob.count({
+      where: {
+        userId: req.user!.id,
+        status: 'failed',
+      },
+    });
+
+    res.json({ scheduled, sent, failed });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to retrieve email counts' });
+  }
+});
+
+/**
+ * Batch Cancel and Delete Scheduled Emails
+ */
+app.post('/api/emails/batch-delete', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  const { ids } = req.body;
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids array is required' });
+  }
+
+  try {
+    const emails = await prisma.emailJob.findMany({
+      where: {
+        id: { in: ids },
+        userId: req.user!.id,
+      },
+    });
+
+    for (const email of emails) {
+      await cancelEmailJob(email.id);
+      await deleteEmailFromIndex(email.id);
+    }
+
+    await prisma.emailJob.deleteMany({
+      where: {
+        id: { in: emails.map((e) => e.id) },
+      },
+    });
+
+    res.json({
+      message: `Successfully cancelled and deleted ${emails.length} emails.`,
+      deletedCount: emails.length,
+    });
+  } catch (error: any) {
+    console.error('Failed to batch delete emails:', error);
+    res.status(500).json({ error: error.message || 'Failed to batch delete emails' });
+  }
+});
+
+/**
  * Get Specific Email Details (Read)
  */
 app.get('/api/emails/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
@@ -599,77 +670,6 @@ app.delete('/api/emails/:id', authMiddleware, async (req: AuthenticatedRequest, 
   } catch (error: any) {
     console.error(`Failed to delete email ${id}:`, error);
     res.status(500).json({ error: error.message || 'Failed to delete email' });
-  }
-});
-
-/**
- * Batch Cancel and Delete Scheduled Emails
- */
-app.post('/api/emails/batch-delete', authMiddleware, async (req: AuthenticatedRequest, res) => {
-  const { ids } = req.body;
-
-  if (!ids || !Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'ids array is required' });
-  }
-
-  try {
-    const emails = await prisma.emailJob.findMany({
-      where: {
-        id: { in: ids },
-        userId: req.user!.id,
-      },
-    });
-
-    for (const email of emails) {
-      await cancelEmailJob(email.id);
-      await deleteEmailFromIndex(email.id);
-    }
-
-    await prisma.emailJob.deleteMany({
-      where: {
-        id: { in: emails.map((e) => e.id) },
-      },
-    });
-
-    res.json({
-      message: `Successfully cancelled and deleted ${emails.length} emails.`,
-      deletedCount: emails.length,
-    });
-  } catch (error: any) {
-    console.error('Failed to batch delete emails:', error);
-    res.status(500).json({ error: error.message || 'Failed to batch delete emails' });
-  }
-});
-
-/**
- * Get Email Status Counts for Sidebar Widgets
- */
-app.get('/api/emails/counts', authMiddleware, async (req: AuthenticatedRequest, res) => {
-  try {
-    const scheduled = await prisma.emailJob.count({
-      where: {
-        userId: req.user!.id,
-        status: { in: ['pending', 'queued', 'sending', 'rate_limited'] },
-      },
-    });
-
-    const sent = await prisma.emailJob.count({
-      where: {
-        userId: req.user!.id,
-        status: 'sent',
-      },
-    });
-
-    const failed = await prisma.emailJob.count({
-      where: {
-        userId: req.user!.id,
-        status: 'failed',
-      },
-    });
-
-    res.json({ scheduled, sent, failed });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to retrieve email counts' });
   }
 });
 
