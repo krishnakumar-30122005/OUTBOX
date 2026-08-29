@@ -723,6 +723,31 @@ app.post('/api/slack/disconnect', authMiddleware, async (req: AuthenticatedReque
   }
 });
 
+/**
+ * Send Live Test Alert to Slack
+ */
+app.post('/api/slack/test', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const slack = await prisma.slackIntegration.findUnique({
+      where: { userId: req.user!.id },
+    });
+
+    if (!slack || !slack.isActive || !slack.webhookUrl) {
+      return res.status(400).json({ error: 'Slack is not connected. Please connect Slack first.' });
+    }
+
+    await sendSlackAlert(
+      req.user!.id,
+      `🚀 *ReachInbox Live Test Alert*\n• *User*: ${req.user!.email}\n• *Timestamp*: ${new Date().toLocaleString()}\n• *Status*: Slack webhook is active and functioning properly!`
+    );
+
+    res.json({ message: 'Test notification sent to your Slack channel successfully!' });
+  } catch (error: any) {
+    console.error('Failed to send test Slack notification:', error);
+    res.status(500).json({ error: error.message || 'Failed to send test notification' });
+  }
+});
+
 // ==========================================
 // APP STARTUP
 // ==========================================

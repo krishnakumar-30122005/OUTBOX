@@ -185,6 +185,18 @@ export default function Dashboard({ token, user: initialUser, onLogout, backendU
     }
   };
 
+  const handleTestSlack = async () => {
+    try {
+      const response = await axios.post(`${backendUrl}/api/slack/test`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showNotification('success', response.data.message || 'Test alert sent to Slack!');
+    } catch (err: any) {
+      console.error(err);
+      showNotification('error', err.response?.data?.error || 'Failed to send test Slack alert.');
+    }
+  };
+
   const handleAddSenderSuccess = (newSender: any) => {
     setSenders((prev) => [newSender, ...prev]);
     showNotification('success', `SMTP sender ${newSender.email} successfully added.`);
@@ -381,12 +393,20 @@ export default function Dashboard({ token, user: initialUser, onLogout, backendU
           </div>
 
           {user.slackIntegration ? (
-            <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl space-y-2.5 shadow-sm">
+            <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl space-y-2 shadow-sm">
               <div className="flex items-center gap-2 text-xs text-emerald-700 font-bold">
                 <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500" />
                 <span>Slack Connected</span>
               </div>
               <button
+                type="button"
+                onClick={handleTestSlack}
+                className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1"
+              >
+                <span>🔔 Send Test Notification</span>
+              </button>
+              <button
+                type="button"
                 onClick={handleDisconnectSlack}
                 className="w-full py-1.5 bg-white border border-slate-200 hover:bg-slate-50 hover:text-rose-600 text-slate-500 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
               >
