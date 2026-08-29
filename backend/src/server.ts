@@ -29,12 +29,14 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json());
 
+import { ReachInboxQueueAdapter } from './queueAdapter';
+
 // Set up Bull Board Admin Panel
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath('/admin/queues');
 try {
   createBullBoard({
-    queues: [new BullMQAdapter(emailQueue as any) as any],
+    queues: [new ReachInboxQueueAdapter(emailQueue as any) as any],
     serverAdapter: serverAdapter,
   });
 } catch (err) {
