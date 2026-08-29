@@ -7,7 +7,7 @@ Think of it as a lightweight Mailshake/Lemlist clone, minus the SaaS pricing.
 Stack
 Backend: Node.js + Express + TypeScript
 Database: SQLite by default (Postgres works too, just swap the connection string) via Prisma
-Queue: BullMQ on Redis, with Nodemailer doing the actual sending
+Queue: BullMQ on Redis doing the actual sending
 Search: Elasticsearch, with a SQL fallback so search never just... breaks
 Monitoring: Bull Board at /admin/queues — handy for watching jobs move in real time
 Frontend: React + Vite + TypeScript + Tailwind, Google login via GIS
@@ -152,3 +152,38 @@ A custom Bull Board adapter. Bull Board normally just falls over if Redis isn't 
 Elasticsearch is optional, not required. If ES isn't running, search quietly falls back to SQL LIKE-style queries across subject/body/recipient. Slower, sure, but it never just breaks on you.
 
 Ethereal instead of real SMTP. I didn't want a bug in my delay logic to accidentally blast real inboxes during testing. Ethereal gives you a real SMTP handshake and a preview link, without any of the risk.
+
+
+**ARCHITECTURAL EXPLANATION**
+
+How it's built, in plain terms
+
+ReachInbox is split into three pieces: a frontend you click around in, a backend that does the thinking, and a worker that actually sends the emails. They talk to each other through a database and a queue, not directly — which is what makes the crash-recovery trick possible.
+
+Frontend (React) This is the dashboard. You log in with Google, upload a CSV, write your email, and hit schedule. It doesn't send anything itself — it just asks the backend to.
+
+Backend (Express API) This is the part that receives your request. When you schedule a campaign, it does two things, in order:
+
+Writes every single email as a row in the database, marked "pending."
+Only after that's saved, hands the job off to the queue with a timer on it.
+
+Saving to the database first is the whole trick — if the row exists, the email is safe, even if everything else crashes a second later.
+
+The queue (Redis + BullMQ) Think of this as an alarm clock for each email. Every scheduled email gets its own timer — recipient #1 fires now, #2 fires 5 seconds later, and so on, so you're not blasting 200 emails in the same second like a bot would.
+
+The worker When an alarm goes off, the worker wakes up, checks two things before it does anything: "has this sender already sent too many emails this hour?" and "is this email already marked as sent?" If the hourly limit's blown, it pushes the email to next hour and pings Slack. If it's already sent, it just skips it — that's what stops duplicates. Otherwise, it sends the email through that sender's SMTP account and marks it "sent" in the database.
+
+Search (Elasticsearch, with a plain SQL backup) Every email gets indexed so you can search by subject, recipient, or body text. If Elasticsearch happens to be down, search doesn't break — it quietly switches to a slower plain-database search instead, so you never hit a dead end.
+
+Surviving a restart This is the part that actually matters most. Because every email's real status lives in the database — not just in Redis's memory — restarting the server doesn't erase anything. On startup, the backend looks through the database for anything still marked "pending" or "queued," figures out how much time is left on each one, and re-arms the timer. If the time already passed while the server was down, it sends immediately. Nothing gets lost, and nothing gets sent twice.
+
+The moving parts, one-line summary:
+
+Piece	Job
+Frontend	Where you compose and schedule campaigns
+Backend API	Saves jobs to the database, hands them to the queue
+Database	The permanent record — source of truth for every email's status
+Redis + BullMQ	The timer system that fires each email at the right moment
+Worker	Checks limits, sends the email, updates the status
+Elasticsearch	Fast search, with SQL as a safety net
+Slack	Gets pinged when a sender hits its hourly cap
