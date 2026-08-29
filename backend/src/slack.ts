@@ -8,15 +8,21 @@ const CLIENT_ID = process.env.SLACK_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET || '';
 const REDIRECT_URI = process.env.SLACK_REDIRECT_URI || '';
 
+function getRedirectUri(): string {
+  if (process.env.SLACK_REDIRECT_URI) return process.env.SLACK_REDIRECT_URI;
+  if (process.env.RENDER_EXTERNAL_URL) return `${process.env.RENDER_EXTERNAL_URL}/api/slack/callback`;
+  return 'https://outbox-backend-92zt.onrender.com/api/slack/callback';
+}
+
 /**
  * Generates the URL to redirect the user to for Slack authorization
  */
 export function getSlackAuthUrl(userId: string): string {
   const clientId = process.env.SLACK_CLIENT_ID || '';
-  const redirectUri = process.env.SLACK_REDIRECT_URI || 'http://localhost:4000/api/slack/callback';
+  const redirectUri = getRedirectUri();
 
   if (!clientId || clientId === 'your_slack_client_id') {
-    throw new Error('Slack Client ID is not configured in backend/.env. Please add your real Slack Client ID.');
+    throw new Error('Slack Client ID is not configured on Render. Please add SLACK_CLIENT_ID in your Render Environment Variables.');
   }
 
   return `https://slack.com/oauth/v2/authorize?client_id=${encodeURIComponent(clientId)}&scope=incoming-webhook&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(userId)}`;
@@ -28,7 +34,7 @@ export function getSlackAuthUrl(userId: string): string {
 export async function handleSlackCallback(code: string, userId: string): Promise<any> {
   const clientId = process.env.SLACK_CLIENT_ID || '';
   const clientSecret = process.env.SLACK_CLIENT_SECRET || '';
-  const redirectUri = process.env.SLACK_REDIRECT_URI || 'http://localhost:4000/api/slack/callback';
+  const redirectUri = getRedirectUri();
 
   const url = 'https://slack.com/api/oauth.v2.access';
   const params = new URLSearchParams();
