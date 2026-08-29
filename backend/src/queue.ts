@@ -180,10 +180,20 @@ export async function executeEmailDelivery(emailId: string, attemptNumber = 1) {
   }
 }
 
+// In-memory active timers tracking for instant cancellation
+const inMemoryTimers = new Map<string, NodeJS.Timeout>();
+
 /**
  * Universal Job Enqueuer (Routes to BullMQ if Redis connected, or local timer queue)
  */
 export async function enqueueEmailJob(emailId: string, delayMs: number): Promise<string> {
+  // Clear any existing timer for this emailId first
+  const existingTimer = inMemoryTimers.get(emailId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    inMemoryTimers.delete(emailId);
+  }
+
   if (isRedisConnected) {
     try {
       const job = await emailQueue.add(
@@ -201,11 +211,38 @@ export async function enqueueEmailJob(emailId: string, delayMs: number): Promise
   }
 
   // Local fallback queue with precision timer
-  setTimeout(() => {
+  const timer = setTimeout(() => {
+    inMemoryTimers.delete(emailId);
     executeEmailDelivery(emailId, 1);
   }, Math.max(0, delayMs));
 
+  inMemoryTimers.set(emailId, timer);
+
   return `local-${emailId}`;
+}
+
+/**
+ * Cancels a scheduled email job from both BullMQ and local memory queues
+ */
+export async function cancelEmailJob(emailId: string): Promise<void> {
+  const timer = inMemoryTimers.get(emailId);
+  if (timer) {
+    clearTimeout(timer);
+    inMemoryTimers.delete(emailId);
+    console.log(`[Queue Engine] Cancelled active in-memory timer for EmailJob: ${emailId}`);
+  }
+
+  if (isRedisConnected) {
+    try {
+      const job = await emailQueue.getJob(emailId);
+      if (job) {
+        await job.remove();
+        console.log(`[BullMQ] Removed job ${emailId} from queue.`);
+      }
+    } catch (err: any) {
+      console.warn(`[BullMQ] Could not remove job ${emailId}:`, err?.message || err);
+    }
+  }
 }
 
 // BullMQ Worker

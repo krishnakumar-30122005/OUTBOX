@@ -24,6 +24,8 @@ const SlackIcon = ({ className }: { className?: string }) => (
 import EmailsTable from './EmailsTable';
 import ComposeModal from './ComposeModal';
 import SenderModal from './SenderModal';
+import EmailDetailModal from './EmailDetailModal';
+import EditEmailModal from './EditEmailModal';
 
 interface DashboardProps {
   token: string;
@@ -48,6 +50,8 @@ export default function Dashboard({ token, user: initialUser, onLogout, backendU
   // Modals state
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [isSenderOpen, setIsSenderOpen] = useState(false);
+  const [selectedEmailForDetail, setSelectedEmailForDetail] = useState<any | null>(null);
+  const [selectedEmailForEdit, setSelectedEmailForEdit] = useState<any | null>(null);
   
   // UI logs
   const [loading, setLoading] = useState(false);
@@ -187,6 +191,26 @@ export default function Dashboard({ token, user: initialUser, onLogout, backendU
   };
 
   const handleComposeSuccess = (message: string) => {
+    fetchCounts();
+    fetchEmails();
+    showNotification('success', message);
+  };
+
+  const handleDeleteEmail = async (emailId: string) => {
+    try {
+      await axios.delete(`${backendUrl}/api/emails/${emailId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      showNotification('success', 'Scheduled email successfully cancelled and removed from queue.');
+      fetchCounts();
+      fetchEmails();
+    } catch (err: any) {
+      console.error('Failed to delete email:', err);
+      showNotification('error', err.response?.data?.error || 'Failed to delete scheduled email.');
+    }
+  };
+
+  const handleEditEmailSuccess = (message: string) => {
     fetchCounts();
     fetchEmails();
     showNotification('success', message);
@@ -444,6 +468,9 @@ export default function Dashboard({ token, user: initialUser, onLogout, backendU
             currentPage={currentPage}
             totalPages={totalPages}
             totalCount={totalCount}
+            onView={(email) => setSelectedEmailForDetail(email)}
+            onEdit={(email) => setSelectedEmailForEdit(email)}
+            onDelete={handleDeleteEmail}
           />
         </div>
       </main>
@@ -469,6 +496,29 @@ export default function Dashboard({ token, user: initialUser, onLogout, backendU
         onSuccess={handleAddSenderSuccess}
         backendUrl={backendUrl}
         token={token}
+      />
+
+      {/* Email Detail / View Modal */}
+      <EmailDetailModal
+        isOpen={Boolean(selectedEmailForDetail)}
+        onClose={() => setSelectedEmailForDetail(null)}
+        email={selectedEmailForDetail}
+        onEdit={(email) => {
+          setSelectedEmailForDetail(null);
+          setSelectedEmailForEdit(email);
+        }}
+        onDelete={handleDeleteEmail}
+      />
+
+      {/* Edit Scheduled Email Modal */}
+      <EditEmailModal
+        isOpen={Boolean(selectedEmailForEdit)}
+        onClose={() => setSelectedEmailForEdit(null)}
+        email={selectedEmailForEdit}
+        senders={senders}
+        backendUrl={backendUrl}
+        token={token}
+        onSuccess={handleEditEmailSuccess}
       />
     </div>
   );

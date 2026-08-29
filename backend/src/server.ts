@@ -8,8 +8,8 @@ import { ExpressAdapter } from '@bull-board/express';
 
 import prisma from './db';
 import { redisConnectionOptions, default as redis } from './redis';
-import { emailQueue, emailWorker, enqueueEmailJob } from './queue';
-import { initElasticsearch, searchEmailsInIndex, indexEmail } from './elasticsearch';
+import { emailQueue, emailWorker, enqueueEmailJob, cancelEmailJob } from './queue';
+import { initElasticsearch, searchEmailsInIndex, indexEmail, deleteEmailFromIndex } from './elasticsearch';
 import { 
   authMiddleware, 
   verifyGoogleToken, 
@@ -475,6 +475,169 @@ app.get('/api/emails/search', authMiddleware, async (req: AuthenticatedRequest, 
     res.json(results);
   } catch (error) {
     res.status(500).json({ error: 'Elasticsearch search failed' });
+  }
+});
+
+/**
+ * Get Specific Email Details (Read)
+ */
+app.get('/api/emails/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  const { id } = req.params;
+  try {
+    const email = await prisma.emailJob.findFirst({
+      where: { id, userId: req.user!.id },
+      include: { sender: true },
+    });
+
+    if (!email) {
+      return res.status(404).json({ error: 'Email record not found' });
+    }
+
+    res.json(email);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch email details' });
+  }
+});
+
+/**
+ * Update / Edit Scheduled Email (Update)
+ */
+app.put('/api/emails/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  const { id } = req.params;
+  const { recipientEmail, recipientName, subject, body, scheduledAt, senderId } = req.body;
+
+  try {
+    const existing = await prisma.emailJob.findFirst({
+      where: { id, userId: req.user!.id },
+      include: { sender: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Email record not found' });
+    }
+
+    if (existing.status === 'sent') {
+      return res.status(400).json({ error: 'Cannot modify an email that has already been sent.' });
+    }
+
+    let updatedSenderId = existing.senderId;
+    if (senderId && senderId !== existing.senderId) {
+      const sender = await prisma.sender.findFirst({
+        where: { id: senderId, userId: req.user!.id },
+      });
+      if (sender) {
+        updatedSenderId = sender.id;
+      }
+    }
+
+    const newScheduledAt = scheduledAt ? new Date(scheduledAt) : existing.scheduledAt;
+
+    // If time or status changed, cancel current job timer and reschedule
+    await cancelEmailJob(id);
+
+    const delayMs = Math.max(0, newScheduledAt.getTime() - Date.now());
+    const newJobId = await enqueueEmailJob(id, delayMs);
+
+    const updated = await prisma.emailJob.update({
+      where: { id },
+      data: {
+        recipientEmail: recipientEmail ? recipientEmail.trim() : existing.recipientEmail,
+        recipientName: recipientName !== undefined ? recipientName.trim() : existing.recipientName,
+        subject: subject !== undefined ? subject : existing.subject,
+        body: body !== undefined ? body : existing.body,
+        scheduledAt: newScheduledAt,
+        senderId: updatedSenderId,
+        status: 'queued',
+        bullJobId: newJobId,
+      },
+      include: { sender: true },
+    });
+
+    // Update Elasticsearch
+    await indexEmail(updated, updated.sender);
+
+    res.json({
+      message: 'Scheduled email successfully updated and rescheduled.',
+      email: updated,
+    });
+  } catch (error: any) {
+    console.error(`Failed to update email ${id}:`, error);
+    res.status(500).json({ error: error.message || 'Failed to update scheduled email' });
+  }
+});
+
+/**
+ * Cancel and Delete Scheduled Email (Delete)
+ */
+app.delete('/api/emails/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  const { id } = req.params;
+
+  try {
+    const existing = await prisma.emailJob.findFirst({
+      where: { id, userId: req.user!.id },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Email record not found' });
+    }
+
+    // Cancel active queue job/timer
+    await cancelEmailJob(id);
+
+    // Delete from Database
+    await prisma.emailJob.delete({
+      where: { id },
+    });
+
+    // Delete from Elasticsearch
+    await deleteEmailFromIndex(id);
+
+    res.json({
+      message: 'Email successfully cancelled and removed from queue.',
+      id,
+    });
+  } catch (error: any) {
+    console.error(`Failed to delete email ${id}:`, error);
+    res.status(500).json({ error: error.message || 'Failed to delete email' });
+  }
+});
+
+/**
+ * Batch Cancel and Delete Scheduled Emails
+ */
+app.post('/api/emails/batch-delete', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  const { ids } = req.body;
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids array is required' });
+  }
+
+  try {
+    const emails = await prisma.emailJob.findMany({
+      where: {
+        id: { in: ids },
+        userId: req.user!.id,
+      },
+    });
+
+    for (const email of emails) {
+      await cancelEmailJob(email.id);
+      await deleteEmailFromIndex(email.id);
+    }
+
+    await prisma.emailJob.deleteMany({
+      where: {
+        id: { in: emails.map((e) => e.id) },
+      },
+    });
+
+    res.json({
+      message: `Successfully cancelled and deleted ${emails.length} emails.`,
+      deletedCount: emails.length,
+    });
+  } catch (error: any) {
+    console.error('Failed to batch delete emails:', error);
+    res.status(500).json({ error: error.message || 'Failed to batch delete emails' });
   }
 });
 
