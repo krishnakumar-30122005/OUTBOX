@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { X, Mail, Clock, Calendar, User, Save, AlertTriangle, ChevronDown } from 'lucide-react';
+import { X, Mail, Calendar, User, Save, AlertTriangle, ChevronDown } from 'lucide-react';
 
 interface EditEmailModalProps {
   isOpen: boolean;

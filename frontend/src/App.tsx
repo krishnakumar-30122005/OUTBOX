@@ -3,8 +3,8 @@ import axios from 'axios';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 
-const BACKEND_URL = 'http://localhost:4000';
-const GOOGLE_CLIENT_ID = '852608121103-5d3itjnk956b0f9pt47lctk103b0scgd.apps.googleusercontent.com';
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000').replace(/\/+$/, '');
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '852608121103-5d3itjnk956b0f9pt47lctk103b0scgd.apps.googleusercontent.com';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));

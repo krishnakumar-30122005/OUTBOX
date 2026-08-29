@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: outbox-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        value: "file:./dev.db"
+      - key: JWT_SECRET
+        value: supersecretkeyforreachinboxjwt
+      - key: FRONTEND_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        value: 852608121103-5d3itjnk956b0f9pt47lctk103b0scgd.apps.googleusercontent.com
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: WORKER_CONCURRENCY
+        value: 5
+      - key: MIN_SEND_DELAY_MS
+        value: 2000
