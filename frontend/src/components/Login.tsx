@@ -42,7 +42,11 @@ export default function Login({
       onLoginSuccess(token, user);
     } catch (err: any) {
       console.error('Google verification error:', err);
-      setError(err.response?.data?.error || 'Google authentication failed. Please try again.');
+      const isNetworkErr = !err.response && (err.message?.includes('Network Error') || err.code === 'ERR_NETWORK');
+      const errorMsg = isNetworkErr
+        ? `Cannot connect to backend (${backendUrl}). Make sure your Render backend service is running and VITE_BACKEND_URL is set in Vercel.`
+        : (err.response?.data?.error || 'Google authentication failed. Please try again.');
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -69,7 +73,11 @@ export default function Login({
       onLoginSuccess(token, user);
     } catch (err: any) {
       console.error('Test login error:', err);
-      setError(err.response?.data?.error || 'Bypass login failed.');
+      const isNetworkErr = !err.response && (err.message?.includes('Network Error') || err.code === 'ERR_NETWORK');
+      const errorMsg = isNetworkErr
+        ? `Cannot connect to backend (${backendUrl}). Make sure your Render backend is running.`
+        : (err.response?.data?.error || 'Bypass login failed.');
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

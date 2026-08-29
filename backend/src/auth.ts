@@ -9,7 +9,9 @@ dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkeyforreachinboxjwt';
 export function getOAuthClient() {
-  const clientId = process.env.GOOGLE_CLIENT_ID || '';
+  const clientId =
+    process.env.GOOGLE_CLIENT_ID ||
+    '852608121103-5d3itjnk956b0f9pt47lctk103b0scgd.apps.googleusercontent.com';
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
   const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/api/auth/google/callback';
 
@@ -132,7 +134,9 @@ export async function handleGoogleCallback(code: string) {
  */
 export async function verifyGoogleToken(idToken: string) {
   try {
-    const clientId = process.env.GOOGLE_CLIENT_ID || '';
+    const clientId =
+      process.env.GOOGLE_CLIENT_ID ||
+      '852608121103-5d3itjnk956b0f9pt47lctk103b0scgd.apps.googleusercontent.com';
     const client = getOAuthClient();
     const ticket = await client.verifyIdToken({
       idToken,
